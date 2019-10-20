@@ -5,7 +5,10 @@ WebGL Canvas eases the transition from a 2D context to a WebGL context when usin
 Replace occurrences of `canvas.getContext('2d')` with `new WebGLContext(canvas)`.
 
 ## New Functionality
-The main benefit comes from decoupling geometry from rendering. By default, a `WebGLContext`'s `mode` is `'immediate'`, which makes it act like a 2D context. TODO
+The main benefit comes from decoupling geometry from rendering. By default, a `WebGLContext`'s `mode` is `'immediate'`, which makes it act like a 2D context. If the mode is set to `'retained'`, then:
+
+- Usual rendering instead creates a geometry.
+- Geometry must be explicitly `clear`ed and `display`ed.
 
 ## What's Supported
 See which methods are defined in the `WebGLContext` class.
