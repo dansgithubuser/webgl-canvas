@@ -1,6 +1,7 @@
 const vertShaderSource = `
   attribute vec2 aPosition;
   attribute vec4 aColor;
+  attribute float aDepth;
 
   uniform vec2 uSize;
 
@@ -10,7 +11,7 @@ const vertShaderSource = `
     gl_Position = vec4(
       -1.0 + 2.0 * aPosition.x / uSize.x,
       +1.0 - 2.0 * aPosition.y / uSize.y,
-      0.0,
+      -aDepth / 1e8,
       1.0
     );
     vColor = aColor;
@@ -52,12 +53,11 @@ function styleToColor(style) {
 
 export class WebGLContext {
   constructor(canvas, mode = 'immediate') {
-    // new functionality members
     this.mode = mode;
-    // ----- internal ----- //
     this.aColorStroke = [0, 0, 0, 255];
     this.aColorFill = [0, 0, 0, 255];
     this.clear();
+    this.depth = 0.0;
     // shader program
     const gl = this.context = canvas.getContext('webgl');
     const vertShader = loadShader(gl, gl.VERTEX_SHADER  , vertShaderSource);
@@ -72,6 +72,7 @@ export class WebGLContext {
     this.locations = {
       aPosition: gl.getAttribLocation(this.program, 'aPosition'),
       aColor: gl.getAttribLocation(this.program, 'aColor'),
+      aDepth: gl.getAttribLocation(this.program, 'aDepth'),
       uSize: gl.getUniformLocation(this.program, 'uSize'),
     };
     // attributes setup
@@ -84,11 +85,17 @@ export class WebGLContext {
     }
     attribSetup('aPosition', 2);
     attribSetup('aColor', 4);
+    attribSetup('aDepth', 1);
     // uniforms setup
     gl.uniform2f(this.locations.uSize, canvas.width, canvas.height);
+    // depth
+    gl.clearDepth(1.0);
+    gl.depthFunc(gl.LEQUAL);
+    if (this.mode == 'retained')
+      gl.enable(gl.DEPTH_TEST);
   }
 
-  // analogy methods
+  // analogs
   set strokeStyle(style) {
     this.aColorStroke = styleToColor(style);
   }
@@ -102,6 +109,7 @@ export class WebGLContext {
       aPosition: [],
       aColorStroke: [],
       aColorFill: [],
+      aDepth: [],
     };
   }
 
@@ -109,6 +117,7 @@ export class WebGLContext {
     this.path.aPosition.push(x, y);
     this.path.aColorStroke.push(...this.aColorStroke);
     this.path.aColorFill.push(...this.aColorFill);
+    this.path.aDepth.push(this.depth++);
   }
 
   lineTo(x, y) {
@@ -121,8 +130,10 @@ export class WebGLContext {
       for (var i = 0; i < this.path.aPosition.length / 2 - 1; ++i) {
         this.pathStroke.aPosition.push(...this.path.aPosition.slice((i + 0) * 2, (i + 1) * 2));
         this.pathStroke.aColor.push(...this.path.aColorStroke.slice((i + 0) * 4, (i + 1) * 4));
+        this.pathStroke.aDepth.push(...this.path.aDepth      .slice((i + 0) * 1, (i + 1) * 1));
         this.pathStroke.aPosition.push(...this.path.aPosition.slice((i + 1) * 2, (i + 2) * 2));
         this.pathStroke.aColor.push(...this.path.aColorStroke.slice((i + 1) * 4, (i + 2) * 4));
+        this.pathStroke.aDepth.push(...this.path.aDepth      .slice((i + 1) * 1, (i + 2) * 1));
       }
       return;
     }
@@ -131,7 +142,10 @@ export class WebGLContext {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.path.aPosition), gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aColor);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.path.aColorStroke), gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aDepth);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.path.aDepth), gl.DYNAMIC_DRAW);
     gl.drawArrays(gl.LINE_STRIP, 0, this.path.aPosition.length / 2);
+    this.depth = 0.0;
   }
 
   fill() {
@@ -140,14 +154,18 @@ export class WebGLContext {
       const base = {
         aPosition: this.path.aPosition.slice(0, 2),
         aColor: this.path.aColorFill  .slice(0, 4),
+        aDepth: this.path.aDepth      .slice(0, 1),
       };
       for (var i = 1; i < this.path.aPosition.length / 2 - 1; ++i) {
         this.pathFill.aPosition.push(...base.aPosition);
         this.pathFill.aColor.push(...base.aColor);
+        this.pathFill.aDepth.push(...base.aDepth);
         this.pathFill.aPosition.push(...this.path.aPosition.slice((i + 0) * 2, (i + 1) * 2));
         this.pathFill.aColor.push(...this.path.aColorFill  .slice((i + 0) * 4, (i + 1) * 4));
+        this.pathFill.aDepth.push(...this.path.aDepth      .slice((i + 0) * 1, (i + 1) * 1));
         this.pathFill.aPosition.push(...this.path.aPosition.slice((i + 1) * 2, (i + 2) * 2));
         this.pathFill.aColor.push(...this.path.aColorFill  .slice((i + 1) * 4, (i + 2) * 4));
+        this.pathFill.aDepth.push(...this.path.aDepth      .slice((i + 1) * 1, (i + 2) * 1));
       }
       return;
     }
@@ -156,7 +174,10 @@ export class WebGLContext {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.path.aPosition), gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aColor);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.path.aColorFill), gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aDepth);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.path.aDepth), gl.DYNAMIC_DRAW);
     gl.drawArrays(gl.TRIANGLE_FAN, 0, this.path.aPosition.length / 2);
+    this.depth = 0.0;
   }
 
   fillRect(x, y, w, h) {
@@ -180,17 +201,20 @@ export class WebGLContext {
     this.stroke();
   }
 
-  // new functionality methods
+  // new functionality
   clear() {
     if (this.mode == 'immediate') return;
     this.pathStroke = {
       aPosition: [],
       aColor: [],
+      aDepth: [],
     };
     this.pathFill = {
       aPosition: [],
       aColor: [],
+      aDepth: [],
     };
+    this.depth = 0.0;
   }
 
   display() {
@@ -200,11 +224,16 @@ export class WebGLContext {
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathFill.aPosition), gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aColor);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathFill.aColor), gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aDepth);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathFill.aDepth), gl.DYNAMIC_DRAW);
     gl.drawArrays(gl.TRIANGLES, 0, this.pathFill.aPosition.length / 2);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aPosition);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathStroke.aPosition), gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aColor);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathStroke.aColor), gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aDepth);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathStroke.aDepth), gl.DYNAMIC_DRAW);
     gl.drawArrays(gl.LINES, 0, this.pathStroke.aPosition.length / 2);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
   }
 }
