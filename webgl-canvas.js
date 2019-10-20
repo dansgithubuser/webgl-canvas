@@ -4,13 +4,14 @@ const vertShaderSource = `
   attribute float aDepth;
 
   uniform vec2 uSize;
+  uniform vec3 uOrigin;
 
   varying highp vec4 vColor;
 
   void main() {
     gl_Position = vec4(
-      -1.0 + 2.0 * aPosition.x / uSize.x,
-      +1.0 - 2.0 * aPosition.y / uSize.y,
+      (-1.0 + 2.0 * (aPosition.x - uOrigin.x) / uSize.x) * uOrigin.z,
+      (+1.0 - 2.0 * (aPosition.y + uOrigin.y) / uSize.y) * uOrigin.z,
       -aDepth / 1e8,
       1.0
     );
@@ -74,6 +75,7 @@ export class WebGLContext {
       aColor: gl.getAttribLocation(this.program, 'aColor'),
       aDepth: gl.getAttribLocation(this.program, 'aDepth'),
       uSize: gl.getUniformLocation(this.program, 'uSize'),
+      uOrigin: gl.getUniformLocation(this.program, 'uOrigin'),
     };
     // attributes setup
     this.buffers = {};
@@ -88,6 +90,7 @@ export class WebGLContext {
     attribSetup('aDepth', 1);
     // uniforms setup
     gl.uniform2f(this.locations.uSize, canvas.width, canvas.height);
+    gl.uniform3f(this.locations.uOrigin, 0, 0, 1);
     // depth
     gl.clearDepth(1.0);
     gl.depthFunc(gl.LEQUAL);
@@ -217,9 +220,10 @@ export class WebGLContext {
     this.depth = 0.0;
   }
 
-  display() {
+  display({ x, y, zoom }) {
     if (this.mode == 'immediate') return;
     const gl = this.context;
+    gl.uniform3f(this.locations.uOrigin, x, y, zoom);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aPosition);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathFill.aPosition), gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aColor);
