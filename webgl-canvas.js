@@ -79,15 +79,14 @@ export class WebGLContext {
     };
     // attributes setup
     this.buffers = {};
-    const attribSetup = (attrib, components) => {
+    const attribSetup = (attrib) => {
       gl.enableVertexAttribArray(this.locations[attrib]);
-      this.buffers[attrib] = gl.createBuffer();
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[attrib]);
-      gl.vertexAttribPointer(this.locations[attrib], components, gl.FLOAT, false, 0, 0);
+      for (const i of ['Stroke', 'Fill'])
+        this.buffers[attrib + i] = gl.createBuffer();
     }
-    attribSetup('aPosition', 2);
-    attribSetup('aColor', 4);
-    attribSetup('aDepth', 1);
+    attribSetup('aPosition');
+    attribSetup('aColor');
+    attribSetup('aDepth');
     // uniforms setup
     gl.uniform2f(this.locations.uSize, canvas.width, canvas.height);
     gl.uniform3f(this.locations.uOrigin, 0, 0, 1);
@@ -141,12 +140,9 @@ export class WebGLContext {
       return;
     }
     const gl = this.context;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aPosition);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.path.aPosition), gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aColor);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.path.aColorStroke), gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aDepth);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.path.aDepth), gl.DYNAMIC_DRAW);
+    this.useBuffer('aPosition', 'Stroke', 2, this.path.aPosition);
+    this.useBuffer('aColor', 'Stroke', 4, this.path.aColorStroke);
+    this.useBuffer('aDepth', 'Stroke', 1, this.path.aDepth);
     gl.drawArrays(gl.LINE_STRIP, 0, this.path.aPosition.length / 2);
     this.depth = 0.0;
   }
@@ -173,12 +169,9 @@ export class WebGLContext {
       return;
     }
     const gl = this.context;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aPosition);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.path.aPosition), gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aColor);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.path.aColorFill), gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aDepth);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.path.aDepth), gl.DYNAMIC_DRAW);
+    this.useBuffer('aPosition', 'Fill', 2, this.path.aPosition);
+    this.useBuffer('aColor', 'Fill', 4, this.path.aColorFill);
+    this.useBuffer('aDepth', 'Fill', 1, this.path.aDepth);
     gl.drawArrays(gl.TRIANGLE_FAN, 0, this.path.aPosition.length / 2);
     this.depth = 0.0;
   }
@@ -220,24 +213,27 @@ export class WebGLContext {
     this.depth = 0.0;
   }
 
-  display({ x, y, zoom }) {
+  display({ x, y, zoom, skipGeometry }) {
     if (this.mode == 'immediate') return;
     const gl = this.context;
     gl.uniform3f(this.locations.uOrigin, x, y, zoom);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aPosition);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathFill.aPosition), gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aColor);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathFill.aColor), gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aDepth);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathFill.aDepth), gl.DYNAMIC_DRAW);
+    this.useBuffer('aPosition', 'Fill'  , 2, !skipGeometry && this.pathFill.aPosition);
+    this.useBuffer('aColor'   , 'Fill'  , 4, !skipGeometry && this.pathFill.aColor);
+    this.useBuffer('aDepth'   , 'Fill'  , 1, !skipGeometry && this.pathFill.aDepth);
     gl.drawArrays(gl.TRIANGLES, 0, this.pathFill.aPosition.length / 2);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aPosition);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathStroke.aPosition), gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aColor);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathStroke.aColor), gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.aDepth);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.pathStroke.aDepth), gl.DYNAMIC_DRAW);
+    this.useBuffer('aPosition', 'Stroke', 2, !skipGeometry && this.pathStroke.aPosition);
+    this.useBuffer('aColor'   , 'Stroke', 4, !skipGeometry && this.pathStroke.aColor);
+    this.useBuffer('aDepth'   , 'Stroke', 1, !skipGeometry && this.pathStroke.aDepth);
     gl.drawArrays(gl.LINES, 0, this.pathStroke.aPosition.length / 2);
     gl.clear(gl.DEPTH_BUFFER_BIT);
+  }
+
+  // private
+  useBuffer(attrib, strokeOrFill, components, data) {
+    const gl = this.context;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[attrib + strokeOrFill]);
+    gl.vertexAttribPointer(this.locations[attrib], components, gl.FLOAT, false, 0, 0);
+    if (data)
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW);
   }
 }
