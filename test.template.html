@@ -1,0 +1,43 @@
+<canvas id='control' width=800 height=600></canvas>
+<canvas id='immediate' width=800 height=600></canvas>
+<canvas id='retained' width=800 height=600></canvas>
+
+<script type='module'>
+
+{}
+
+function drawStuff(context) {
+  // red line across screen
+  context.strokeStyle = 'red';
+  context.beginPath();
+  context.moveTo(100, 200);
+  context.lineTo(700, 200);
+  context.stroke();
+  // blue triangle
+  context.fillStyle = 'blue';
+  context.beginPath();
+  context.moveTo(400, 500);
+  context.lineTo(600, 100);
+  context.lineTo(200, 100);
+  context.lineTo(400, 500);
+  context.fill();
+  context.stroke();
+  // yellow rectangle
+  context.fillStyle = 'yellow';
+  context.fillRect(300, 200, 100, 200);
+  // red arc
+  context.strokeStyle = 'red';
+  context.beginPath();
+  context.arc(400, 300, 10, 0, 3);
+  context.stroke();
+}
+
+const control = document.getElementById('control').getContext('2d');
+const immediate = new WebGLContext(document.getElementById('immediate'));
+const retained = new WebGLContext(document.getElementById('retained'));
+
+drawStuff(control);
+drawStuff(immediate);
+drawStuff(retained);
+
+</script>
