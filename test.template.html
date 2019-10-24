@@ -7,11 +7,13 @@
 {}
 
 function drawStuff(context) {
-  // red line across screen
+  // red lines across screen
   context.strokeStyle = 'red';
   context.beginPath();
-  context.moveTo(100, 200);
-  context.lineTo(700, 200);
+  for (let i = 0; i < 3; ++i) {
+    context.moveTo(100, 200 + 100 * i);
+    context.lineTo(700, 200 + 100 * i);
+  }
   context.stroke();
   // blue triangle
   context.fillStyle = 'blue';
