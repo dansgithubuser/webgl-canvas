@@ -23,7 +23,7 @@ const fragShaderSource = `
   varying highp vec4 vColor;
 
   void main() {
-    gl_FragColor = vec4(vColor.r, vColor.g, vColor.b, 1.0);
+    gl_FragColor = vColor;
   }
 `;
 
@@ -52,12 +52,18 @@ function styleToColor(style) {
   return result;
 }
 
+function checkFillOrStroke(fillOrStroke) {
+  if (!['Fill', 'Stroke'].includes(fillOrStroke))
+    throw new Error('fillOrStroke must be "Fill" or "Stroke"');
+}
+
 class Path {
   constructor() {
     this.aPosition = [];
     this.aColor = [];
     this.aDepth = [];
     this.iStart = 0;
+    this.iStartShape = 0;
   }
 
   push() {
@@ -74,22 +80,33 @@ class Path {
   }
 
   keep() {
-    this.iStart = this.length;
+    this.iStart = this.fullLength;
   }
 
   reset() {
-    if (this.length == this.iStart) return;
+    if (this.fullLength == this.iStart) return;
     this.aPosition.splice(2 * this.iStart, this.aPosition.length);
     this.aColor   .splice(4 * this.iStart, this.aColor.length);
     this.aDepth   .splice(1 * this.iStart, this.aDepth.length);
   }
 
-  get length() {
+  getShape() {
+    this.reset();
+    const range = {
+      start: this.iStartShape,
+      end: this.fullLength,
+      length: this.fullLength - this.iStartShape,
+    };
+    this.iStartShape = this.fullLength;
+    return { path: this, range };
+  }
+
+  get fullLength() {
     return this.aDepth.length;
   }
 
-  get fanLength() {
-    return this.length - this.iStart;
+  get length() {
+    return this.fullLength - this.iStart;
   }
 
   get start() {
@@ -102,6 +119,52 @@ class Path {
   }
 }
 
+class Shape {
+  constructor(fill, stroke, buffers, gl) {
+    this.fill = fill;
+    this.stroke = stroke;
+    this.buffers = buffers;
+    this.gl = gl;
+  }
+
+  move(dx, dy, fillOrStroke) {
+    if (fillOrStroke === undefined) {
+      this.move(dx, dy, 'Fill');
+      this.move(dx, dy, 'Stroke');
+      return;
+    }
+    this.transform(([x, y]) => [x + dx, y - dy], fillOrStroke, 'aPosition', 2);
+  }
+
+  recolor(r, g, b, a, fillOrStroke) {
+    this.transform(() => [r, g, b, a], fillOrStroke, 'aColor', 4);
+  }
+
+  transform(f, fillOrStroke, attrib, stride) {
+    checkFillOrStroke(fillOrStroke);
+    const gl = this.gl;
+    const path = this[fillOrStroke.toLowerCase()].path;
+    const range = this[fillOrStroke.toLowerCase()].range;
+    this.apply(path[attrib], range, stride, f);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[attrib + fillOrStroke]);
+    gl.bufferSubData(
+      gl.ARRAY_BUFFER,
+      range.start * stride * 4,
+      new Float32Array(path[attrib]),
+      range.start * stride,
+      range.length * stride,
+    );
+  }
+
+  apply(array, range, stride, f) {
+    for (let i = range.start * stride; i < range.end * stride; i += stride) {
+      const y = f(array.slice(i, i + stride));
+      for (let j = 0; j < stride; ++j)
+        array[i + j] = y[j];
+    }
+  }
+}
+
 export class WebGLContext {
   constructor(canvas, mode = 'immediate') {
     this.mode = mode;
@@ -110,7 +173,7 @@ export class WebGLContext {
     this.aColorStroke = [0, 0, 0, 255];
     this.pathReset();
     // shader program
-    const gl = this.context = canvas.getContext('webgl');
+    const gl = this.context = canvas.getContext('webgl2');
     const vertShader = loadShader(gl, gl.VERTEX_SHADER  , vertShaderSource);
     const fragShader = loadShader(gl, gl.FRAGMENT_SHADER, fragShaderSource);
     this.program = gl.createProgram();
@@ -145,6 +208,9 @@ export class WebGLContext {
     gl.depthFunc(gl.LEQUAL);
     if (this.mode == 'retained')
       gl.enable(gl.DEPTH_TEST);
+    // alpha
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   }
 
   // analogs
@@ -172,9 +238,9 @@ export class WebGLContext {
 
   lineTo(x, y) {
     // fill
-    if (this.pathFill.fanLength >= 3)
+    if (this.pathFill.length >= 3)
       this.pathFill.push(this.pathFill.start);
-    if (this.pathFill.fanLength != 2)
+    if (this.pathFill.length != 2)
       this.pathFill.push(this.aPosition, this.aColorFill, this.aDepth);
     this.pathFill.push(x, y, this.aColorFill, this.aDepth++);
     // stroke
@@ -191,7 +257,7 @@ export class WebGLContext {
       this.useBuffer('aPosition', 'Fill', 2, this.pathFill.aPosition);
       this.useBuffer('aColor', 'Fill', 4, this.pathFill.aColor);
       this.useBuffer('aDepth', 'Fill', 1, this.pathFill.aDepth);
-      gl.drawArrays(gl.TRIANGLES, 0, this.pathFill.length);
+      gl.drawArrays(gl.TRIANGLES, 0, this.pathFill.fullLength);
     } else if (this.mode == 'retained') {
       this.pathFill.keep();
     }
@@ -203,7 +269,7 @@ export class WebGLContext {
       this.useBuffer('aPosition', 'Stroke', 2, this.pathStroke.aPosition);
       this.useBuffer('aColor', 'Stroke', 4, this.pathStroke.aColor);
       this.useBuffer('aDepth', 'Stroke', 1, this.pathStroke.aDepth);
-      gl.drawArrays(gl.LINES, 0, this.pathStroke.length);
+      gl.drawArrays(gl.LINES, 0, this.pathStroke.fullLength);
     } else if (this.mode == 'retained') {
       this.pathStroke.keep();
     }
@@ -252,10 +318,20 @@ export class WebGLContext {
     gl.clear(gl.DEPTH_BUFFER_BIT);
   }
 
+  getShape() {
+    return new Shape(
+      this.pathFill.getShape(),
+      this.pathStroke.getShape(),
+      this.buffers,
+      this.context,
+    );
+  }
+
   // private
-  useBuffer(attrib, strokeOrFill, components, data) {
+  useBuffer(attrib, fillOrStroke, components, data) {
+    checkFillOrStroke(fillOrStroke);
     const gl = this.context;
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[attrib + strokeOrFill]);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[attrib + fillOrStroke]);
     gl.vertexAttribPointer(this.locations[attrib], components, gl.FLOAT, false, 0, 0);
     if (data)
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW);
