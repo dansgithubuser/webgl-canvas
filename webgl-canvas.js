@@ -140,12 +140,24 @@ class Shape {
     this.transform(() => [r, g, b, a], fillOrStroke, 'aColor', 4);
   }
 
+  hide() {
+    this.recolor(0, 0, 0, 0, 'Fill');
+    this.recolor(0, 0, 0, 0, 'Stroke');
+  }
+
+  geometrize() {
+    for (const fillOrStroke of ['Fill', 'Stroke'])
+      for (const [attrib, stride] of [['aPosition', 2], ['aColor', 4], ['aDepth', 1]])
+        this.transform(null, fillOrStroke, attrib, stride);
+  }
+
+  // private
   transform(f, fillOrStroke, attrib, stride) {
     checkFillOrStroke(fillOrStroke);
     const gl = this.gl;
     const path = this[fillOrStroke.toLowerCase()].path;
     const range = this[fillOrStroke.toLowerCase()].range;
-    this.apply(path[attrib], range, stride, f);
+    if (f) this.apply(path[attrib], range, stride, f);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[attrib + fillOrStroke]);
     gl.bufferSubData(
       gl.ARRAY_BUFFER,
@@ -310,11 +322,11 @@ export class WebGLContext {
     this.useBuffer('aPosition', 'Fill'  , 2, !skipGeometry && this.pathFill.aPosition);
     this.useBuffer('aColor'   , 'Fill'  , 4, !skipGeometry && this.pathFill.aColor);
     this.useBuffer('aDepth'   , 'Fill'  , 1, !skipGeometry && this.pathFill.aDepth);
-    gl.drawArrays(gl.TRIANGLES, 0, this.pathFill.aPosition.length / 2);
+    gl.drawArrays(gl.TRIANGLES, 0, this.pathFill.fullLength);
     this.useBuffer('aPosition', 'Stroke', 2, !skipGeometry && this.pathStroke.aPosition);
     this.useBuffer('aColor'   , 'Stroke', 4, !skipGeometry && this.pathStroke.aColor);
     this.useBuffer('aDepth'   , 'Stroke', 1, !skipGeometry && this.pathStroke.aDepth);
-    gl.drawArrays(gl.LINES, 0, this.pathStroke.aPosition.length / 2);
+    gl.drawArrays(gl.LINES, 0, this.pathStroke.fullLength);
     gl.clear(gl.DEPTH_BUFFER_BIT);
   }
 
@@ -333,8 +345,10 @@ export class WebGLContext {
     const gl = this.context;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers[attrib + fillOrStroke]);
     gl.vertexAttribPointer(this.locations[attrib], components, gl.FLOAT, false, 0, 0);
-    if (data)
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(data), gl.DYNAMIC_DRAW);
+    if (data) {
+      gl.bufferData(gl.ARRAY_BUFFER, 2 * data.length * 4, gl.DYNAMIC_DRAW);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array(data), 0, data.length);
+    }
   }
 
   pathReset() {
