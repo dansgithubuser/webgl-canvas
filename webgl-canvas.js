@@ -141,8 +141,13 @@ class Shape {
   }
 
   hide() {
-    this.recolor(0, 0, 0, 0, 'Fill');
-    this.recolor(0, 0, 0, 0, 'Stroke');
+    this.transform((d) => [d > 0 ? -d : d], 'Fill'  , 'aDepth', 1);
+    this.transform((d) => [d > 0 ? -d : d], 'Stroke', 'aDepth', 1);
+  }
+
+  unhide() {
+    this.transform((d) => [d < 0 ? -d : d], 'Fill'  , 'aDepth', 1);
+    this.transform((d) => [d < 0 ? -d : d], 'Stroke', 'aDepth', 1);
   }
 
   geometrize() {
